@@ -38,7 +38,7 @@ class MainApplication(tk.Frame):
         self.start(DoPlayerGrid(self))
 
     def start(self,area):
-        self.master.bind("<Insert>", area.changeRotation)
+        self.master.bind("<r>", area.changeRotation)
         self.playerGrid.bind("<Motion>", area.cursor)
         self.playerGrid.bind("<Button-1>", area.placeShip)
 ########################################################################################################################################
@@ -203,7 +203,7 @@ class DoPlayerGrid(object):
             self.stop()
 
     def stop(self,event=None):
-        self.mainWindow.unbind("<Insert>")
+        self.mainWindow.unbind("<r>")
         self.playerGrid.unbind("<Motion>")
         self.playerGrid.unbind("<Button-1>")
 ########################################################################################################################################
