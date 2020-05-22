@@ -13,13 +13,6 @@ def resource_path(relative_path):
 
         return os.path.join(base_path, relative_path)
 ########################################################################################################################################
-playerShipData = {}
-enemyShipData = {}
-takenPlayerShipCoords = set()
-takenPlayerGuessCoords = set()
-takenEnemyShipCoords = set()
-takenEnemyGuessCoords = set()
-########################################################################################################################################
 class MainApplication(tk.Frame):
     def __init__(self, master=None, width=586, height=586):
         super().__init__(master)
@@ -42,39 +35,44 @@ class MainApplication(tk.Frame):
 
         self.enemyGrid = tk.Canvas(self.master, width=width, height=height, highlightthickness=0, bg='black')
         self.enemyGrid.grid(row=0,column=1)
+        
         #Start the player grid functionality
-        self.player = DoPlayerGrid(self)
-        self.enemy = DoEnemyGrid(self)
+        game = Singleplayer(self)
+        self.player = DoPlayerGrid(self,game,"ai")
+        self.enemy = DoEnemyGrid(self,game,"player1")
 
         self.start(self.player)
         self.start2(self.enemy)
 
     def start(self,area):
-        self.master.bind("<r>", area.changeRotation)
+        #self.master.bind("<Button-2>", area.changeRotation)
         self.playerGrid.bind("<Motion>", area.cursorShip)
         self.playerGrid.bind("<Button-1>", area.placeShip)
+        self.playerGrid.bind("<Button-3>", area.changeRotation)
         #self.master.bind("<Insert>", area.addGuess)
 
     def start2(self,area):
         self.enemyGrid.bind("<Motion>", area.cursor)
         area.randomShipGeneration()
-        self.master.bind("<q>", area.addGuess)
+        #self.master.bind("<q>", area.addGuess)
+        self.enemyGrid.bind("<Button-1>", area.addGuess)
 ########################################################################################################################################
 class DoPlayerGrid(object):
-    def __init__(self,mainWindow):
+    def __init__(self,mainWindow,game,playerID):
         self.mainWindow = mainWindow
         self.playerGrid = mainWindow.playerGrid
 
-        self.game = Game()
-
+        self.game = game
+        self.playerID = playerID
+        
         self.shipLengthToPixels = {2:75,3:128,4:181,5:234}
         self.shipLength = 5
         self.shipType = self.game.playerShipsLeftToPlace[0]
         self.shipLengthPixels = self.shipLengthToPixels[self.shipLength]
         self.rotation = "r"
 
-        self.takenPlayerShipCoords = takenPlayerShipCoords
-        self.takenPlayerGuessCoords = takenPlayerGuessCoords
+        self.takenPlayerShipCoords = self.game.takenPlayerShipCoords
+        self.takenPlayerGuessCoords = self.game.takenPlayerGuessCoords
 
         self.boxesX = {}
         for i in range(10):
@@ -237,44 +235,59 @@ class DoPlayerGrid(object):
                     self.shipLength = self.game.shipTypeLength[self.shipType]
                     self.shipLengthPixels = self.shipLengthToPixels[self.shipLength]
                 except:
-                    self.stop()
+                    self.ready()
             else:
                 box.showwarning("Placement Error", "You cannot place a ship on top of another.")
         else:
-            self.stop()
-
+            self.ready()
+            
+    def randomGuess(self):
+        self.posX = randint(0,9)
+        self.posY = randint(0,9)
+        currentGuess = (self.posX,self.posY)
+        if currentGuess in self.game.takenPlayerGuessCoords:
+            self.randomGuess()
+        else:
+            self.addGuess()
+            self.game.go = "player"
+            self.game.gameloop()
+        
     def addGuess(self,event=None):
         guessX = ((self.posX+1) * 53) + 1 + 26.25
         guessY = ((self.posY+1) * 53) + 1 + 26.25
         guess = self.game.guessPlayer(self.posX,self.posY)
         self.playerGrid.create_oval(guessX-10,guessY-10,guessX+10,guessY+10,fill=guess)
-
-    def stop(self,event=None):
-        self.mainWindow.unbind("<r>")
+ 
+ 
+            
+    def ready(self,event=None):
         self.playerGrid.unbind("<Motion>")
         #self.playerGrid.bind("<Motion>", self.cursorGuess)
         self.playerGrid.unbind("<Button-1>")
-        #self.mainWindow.start2(self.mainWindow.enemy)
+        self.playerGrid.unbind("<Button-3>")
+        #print("Player Coords",self.game.takenPlayerShipCoords)
+        #print("Enemy Coords",self.game.takenEnemyShipCoords)
+        self.game.ready(self)
 ########################################################################################################################################
 class DoEnemyGrid(object):
-    def __init__(self,mainWindow):
+    def __init__(self,mainWindow,game,playerID):
         self.mainWindow = mainWindow
         self.enemyGrid = mainWindow.enemyGrid
 
-        self.game = Game()
-
-
+        self.game = game
+        self.playerAllowedGuess = False
+        
         self.shipLength = 5
         self.shipType = self.game.enemyShipsLeftToPlace[0]
         self.rotation = "r"
 
-        self.takenEnemyShipCoords = takenEnemyShipCoords
-        self.takenEnemyGuessCoords = takenEnemyGuessCoords
+        self.takenEnemyShipCoords = self.game.takenEnemyShipCoords
+        self.takenEnemyGuessCoords = self.game.takenEnemyGuessCoords
 
         self.boxesX = {}
         for i in range(10):
             self.boxesX[range(((i*53)+56),(((i+1)*53)+56))] = ((i*53)+69.5)
-
+            
         self.boxesY = {}
         for i in range(10):
             self.boxesY[range(((i*53)+56),(((i+1)*53)+56))] = ((i*53)+67.5)
@@ -282,7 +295,7 @@ class DoEnemyGrid(object):
         self.enemyGridImage = tk.PhotoImage(file="grid/grid.png")
         self.enemyGrid.create_image(0, 0, image=self.enemyGridImage, anchor="nw")
 
-        self.rect = self.enemyGrid.create_rectangle(0, 0, 0, 0, fill="blue")
+        self.cursorCircle = self.enemyGrid.create_oval(0, 0, 0, 0, fill="blue")
 
     def randomShipGeneration(self):
         while len(self.game.enemyShipsLeftToPlace) != 0:
@@ -296,7 +309,7 @@ class DoEnemyGrid(object):
             elif self.rotation == "d":
                 self.posX = randint(0,9)
                 self.posY = randint(0,self.shipLength)
-            elif self.rotation == "l":
+            elif self.rotation == "u":
                 self.posX = randint(0,9)
                 self.posY = randint(self.shipLength-1,9)
             self.placeShip()
@@ -326,12 +339,20 @@ class DoEnemyGrid(object):
         self.posX = int((self.x // 53)-1)
         self.posY = int((self.y // 53)-1)
 
+        cursorX = ((self.posX+1) * 53) + 1 + 26.25
+        cursorY = ((self.posY+1) * 53) + 1 + 26.25
+        self.enemyGrid.coords(self.cursorCircle, cursorX-10,cursorY-10,cursorX+10,cursorY+10)
+        
     def addGuess(self,event=None):
-        guessX = ((self.posX+1) * 53) + 1 + 26.25
-        guessY = ((self.posY+1) * 53) + 1 + 26.25
-        guess = self.game.guessEnemy(self.posX,self.posY)
-        self.enemyGrid.create_oval(guessX-10,guessY-10,guessX+10,guessY+10,fill=guess)
-
+        if self.playerAllowedGuess:
+            guessX = ((self.posX+1) * 53) + 1 + 26.25
+            guessY = ((self.posY+1) * 53) + 1 + 26.25
+            guess = self.game.guessEnemy(self.posX,self.posY)
+            if guess != False:
+                self.enemyGrid.create_oval(guessX-10,guessY-10,guessX+10,guessY+10,fill=guess)
+                self.game.go = "ai"
+                self.game.gameloop()
+    
     def checkPlacement(self):
         for i in range(self.shipLength):
             if self.rotation == "r":
@@ -367,31 +388,39 @@ class DoEnemyGrid(object):
                     self.shipType = self.game.enemyShipsLeftToPlace[0]
                     self.shipLength = self.game.shipTypeLength[self.shipType]
                 except:
-                    self.stop()
+                    self.ready()
             else:
                 None
         else:
-            self.stop()
+            self.ready()
 
-    def stop(self):
-        #print(self.takenEnemyShipCoords)
+    def ready(self):
+       self.game.ready(self)
+        
 ########################################################################################################################################
-class Game(object):
-    def __init__(self):
+class Singleplayer(object):
+    def __init__(self,mainWindow):
+        self.mainWindow = mainWindow
+        
+        self.readyPlayers = []
+        
         self.shipTypeLength = {"Carrier":5, "Battleship":4,"Cruiser":3,
                                 "Submarine":3,"Destroyer":2}
 
         self.playerShipsLeftToPlace = ["Carrier","Battleship","Cruiser","Submarine","Destroyer"]
-        self.playerShipData = playerShipData
+        self.playerShipData = {}
 
         self.enemyShipsLeftToPlace = ["Carrier","Battleship","Cruiser","Submarine","Destroyer"]
-        self.enemyShipData = enemyShipData
+        self.enemyShipData = {}
 
-        self.takenPlayerShipCoords = takenPlayerShipCoords
-        self.takenPlayerGuessCoords = takenPlayerGuessCoords
+        self.takenPlayerShipCoords = set()
+        self.takenPlayerGuessCoords = set()
+        self.playerHits = 0
 
-        self.takenEnemyShipCoords = takenEnemyShipCoords
-        self.takenEnemyGuessCoords = takenEnemyGuessCoords
+        self.takenEnemyShipCoords = set()
+        self.takenEnemyGuessCoords = set()
+        self.enemyHits = 0
+
 
     def addPlayerShip(self,shipType,posX,posY,dir):
         self.playerShipData[shipType] = {"Coords":(posX,posY),"Direction":dir}
@@ -401,26 +430,50 @@ class Game(object):
 
     def guessPlayer(self,x,y):
         currentGuess = (x,y)
-        if currentGuess in self.takenPlayerGuessCoords:
-            box.showwarning("Guess Error", "This coordinate has already been guessed.")
+        self.takenPlayerGuessCoords.add(currentGuess)
+        if currentGuess in self.takenPlayerShipCoords:
+            self.playerHits += 1
+            return "red"
         else:
-            self.takenPlayerGuessCoords.add(currentGuess)
-            if currentGuess in self.takenPlayerShipCoords:
-                return "red"
-            else:
-                return "white"
+            return "white"
 
     def guessEnemy(self,x,y):
         currentGuess = (x,y)
         if currentGuess in self.takenEnemyGuessCoords:
             box.showwarning("Guess Error", "This coordinate has already been guessed.")
+            return False
         else:
             self.takenEnemyGuessCoords.add(currentGuess)
             if currentGuess in self.takenEnemyShipCoords:
+                self.enemyHits += 1
                 return "red"
             else:
                 return "white"
 
+    def ready(self,playerobject):
+        self.readyPlayers.append(playerobject)
+        if len(self.readyPlayers) == 2:
+            self.ai = self.readyPlayers[0]
+            self.player = self.readyPlayers[1]
+            self.go = "player"
+            self.gameloop()
+
+    def gameloop(self):
+        #print("//////////////////////////////////////")
+        #print(f"Player Hits: {self.playerHits}")
+        #print(f"Enemy Hits {self.enemyHits}")
+        if self.playerHits == 17:
+            box.showwarning("Lost", "You lose.")
+        elif self.enemyHits == 17:
+            box.showwarning("Won", "You win!")
+            
+        if self.go == "ai":
+            self.ai.playerAllowedGuess = False
+            self.player.randomGuess()
+            
+        elif self.go == "player":
+            self.ai.playerAllowedGuess = True
+        pass
 
 ########################################################################################################################################
 def main():
